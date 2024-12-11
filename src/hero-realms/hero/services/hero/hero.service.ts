@@ -1,10 +1,9 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
-import * as fs from 'fs-extra';
 import { ActionCondition, HeroPlacement, PrismaClient } from '@prisma/client';
 import omit from 'lodash.omit';
 
 import { CONVERT_ACTION_CONDITION } from '../../enums/action-condition.enum';
-import { ADDITIONAL_ACTION_INFO, DATASET_PATH_FILE } from './hero.constant';
+import { ADDITIONAL_ACTION_INFO } from './hero.constant';
 import { BattlefieldService } from 'src/hero-realms/battlefield/services/battlefield.service';
 import {
   CONVERT_HERO_PLACEMENT,
@@ -21,7 +20,6 @@ import { MAX_PLAYER_HP } from 'src/hero-realms/player/services/player.constant';
 
 import type {
   ActionWithoutAdditionalInfo,
-  Dataset,
   HeroRaw,
   HeroStats,
 } from './hero.interface';
@@ -69,25 +67,6 @@ export class HeroService {
     });
 
     return createdHero;
-  }
-
-  public async applyDataset() {
-    try {
-      const data = await fs.readFile(DATASET_PATH_FILE, 'utf8');
-      const { heroes } = JSON.parse(data) as Dataset;
-
-      for (const hero of heroes) {
-        const isExist = await this.db.hero.findFirst({
-          where: { name: hero.name },
-        });
-
-        if (!isExist) {
-          await this.createHero(hero);
-        }
-      }
-    } catch (error) {
-      console.log(error);
-    }
   }
 
   public async hireHero(dto: HireHeroDto) {

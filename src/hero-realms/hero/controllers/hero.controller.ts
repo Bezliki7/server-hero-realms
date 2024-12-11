@@ -23,10 +23,4 @@ export class HeroController {
   public useHeroActions(@Body() dto: UseHeroActionsDto) {
     return this.hero.useHeroActions(dto);
   }
-
-  @Get('apply-dataset')
-  public applyDataset() {
-    this.hero.applyDataset();
-    return 'success';
-  }
 }

@@ -1,4 +1,17 @@
-export const DATASET_PATH_FILE = 'assets/dataset/heroes.json';
+import path from 'path';
+
+export const DATASET_PATH_FILE = path.join(
+  process.cwd(),
+  'assets/dataset/heroes.json',
+);
+
+export const HASH = {
+  PATH: path.join(process.cwd(), 'assets/dataset/dataset.hash'),
+  ALGORITHM: 'md5',
+  ENCODING: 'hex',
+} as const;
+
+export const FILE_ENCODING = 'utf-8';
 
 export const ACTION_TYPE = {
   DAMAGE: 'damage',
