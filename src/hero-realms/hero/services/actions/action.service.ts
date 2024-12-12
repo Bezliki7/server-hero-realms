@@ -9,20 +9,22 @@ import { PutToDeckResetedCardActionService } from './put-to-deck-reseted-card/pu
 import { HealActionService } from './heal/heal.service';
 import { ActionsWithUpdatePlacementService } from './actions-with-update-placement/actions-with-update-placement.service';
 import { ACTIONS_WITH_UPDATE_PLACEMENT } from './action.constant';
+import { HeroHelperService } from '../hero/helper/hero-herlper.service';
 
 import type { UseActionDto } from './action.interface';
 
 @Injectable()
 export class ActionsService {
   constructor(
-    private readonly db: PrismaClient,
-    private readonly actionsWithUpdatePlacement: ActionsWithUpdatePlacementService,
-    private readonly damageAction: DamageActionService,
-    private readonly goldAction: GoldActionService,
-    private readonly healAction: HealActionService,
-    private readonly putToDeckResetedCardAction: PutToDeckResetedCardActionService,
-    private readonly resetOpponentsCardAction: ResetOpponentsCardActionService,
-    private readonly takeCardAction: TakeCardActionService,
+    readonly db: PrismaClient,
+    readonly actionsWithUpdatePlacement: ActionsWithUpdatePlacementService,
+    readonly damageAction: DamageActionService,
+    readonly goldAction: GoldActionService,
+    readonly healAction: HealActionService,
+    readonly putToDeckResetedCardAction: PutToDeckResetedCardActionService,
+    readonly resetOpponentsCardAction: ResetOpponentsCardActionService,
+    readonly takeCardAction: TakeCardActionService,
+    readonly heroHelper: HeroHelperService,
   ) {}
 
   public async useAction(dto: UseActionDto) {
@@ -34,10 +36,13 @@ export class ActionsService {
 
     await this[actionServiceName].useAction(dto);
 
-    await this.db.action.update({
+    const usedAction = await this.db.action.update({
       where: { id: dto.action.id },
       data: { isUsed: true },
+      include: { hero: { include: { actions: true } } },
     });
+
+    this.heroHelper.onUpdateHero(usedAction.hero);
   }
 
   private getActionServiceName(actionName: string) {

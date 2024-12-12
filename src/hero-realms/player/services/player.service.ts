@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { HeroPlacement, PrismaClient } from '@prisma/client';
+import { HeroPlacement, Player, PrismaClient } from '@prisma/client';
 
 import { BattlefieldService } from 'src/hero-realms/battlefield/services/battlefield.service';
 import { CLIENT_MESSAGES } from 'src/hero-realms/battlefield/battlefield.constant';
-import { HeroService } from 'src/hero-realms/hero/services/hero/hero.service';
 import { DEFAULT_PLAYER_HP, MIN_PLAYER_HP } from './player.constant';
 import { PlayerHelperService } from './helper/player-helper.service';
+import { HeroHelperService } from 'src/hero-realms/hero/services/hero/helper/hero-herlper.service';
+import { SocketService } from 'libs/socket/services/socket.service';
 
 import type { CreatePlayerDto } from '../controllers/dtos/create-Player.dto';
 import type { UpdatePlayerDto } from '../controllers/dtos/update-player.dto';
@@ -16,8 +17,9 @@ export class PlayerService {
   constructor(
     private readonly db: PrismaClient,
     private readonly battlefield: BattlefieldService,
-    private readonly hero: HeroService,
+    private readonly heroHelper: HeroHelperService,
     private readonly playerHelper: PlayerHelperService,
+    private readonly socket: SocketService,
   ) {}
 
   public async createPlayer(dto: CreatePlayerDto) {
@@ -33,7 +35,9 @@ export class PlayerService {
       include: { heroes: { include: { actions: true } } },
     });
 
-    const heroes = player.heroes.map((hero) => this.hero.normalizeHero(hero));
+    const heroes = player.heroes.map((hero) =>
+      this.heroHelper.normalizeHero(hero),
+    );
 
     return { ...player, heroes };
   }
@@ -64,7 +68,9 @@ export class PlayerService {
       },
     });
 
-    const heroes = player.heroes.map((hero) => this.hero.normalizeHero(hero));
+    const heroes = player.heroes.map((hero) =>
+      this.heroHelper.normalizeHero(hero),
+    );
 
     return { ...player, heroes };
   }
@@ -79,6 +85,7 @@ export class PlayerService {
 
   public async endPlayerMove(id: number) {
     try {
+      const players: Player[] = [];
       const player = await this.db.player.findUnique({
         where: { id },
         include: {
@@ -92,12 +99,14 @@ export class PlayerService {
       );
 
       if (opponentPlayer) {
-        await this.db.player.update({
+        const updatedOpponent = await this.db.player.update({
           where: { id: opponentPlayer.id },
           data: {
             currentTurnPlayer: true,
           },
         });
+
+        players.push(updatedOpponent);
       }
 
       await this.playerHelper.updateActiveDeck(player);
@@ -111,6 +120,9 @@ export class PlayerService {
           guaranteedHeroes: player.guaranteedHeroes,
         },
       });
+      players.push(updatedPlayer);
+
+      this.socket.notifyAllSubsribers(CLIENT_MESSAGES.PLAYERS_UPDATED, players);
 
       await this.battlefield.getBattlefieldAndNotifyAllSubs(
         CLIENT_MESSAGES.BATTLEFIELD_UPDATED,
@@ -158,7 +170,7 @@ export class PlayerService {
         heroToAttack.placement === HeroPlacement.DEFENDERS_ROW
       ) {
         if (heroToAttack.isGuardian || !isDefendingPlayerHaveGuardian) {
-          await this.db.hero.update({
+          const updatedHero = await this.db.hero.update({
             where: { id: dto.heroIdToAttack },
             data: {
               placement: HeroPlacement.RESET_DECK,
@@ -169,15 +181,24 @@ export class PlayerService {
                 },
               },
             },
+            include: { actions: true },
           });
 
-          await this.db.player.update({
+          this.heroHelper.onUpdateHero(updatedHero);
+
+          const updatedPlayer = await this.db.player.update({
             data: {
               currentDamageCount:
                 attacker.currentDamageCount - heroToAttack.protection,
             },
             where: { id: dto.attackingPlayerId },
+            include: { battlefield: { include: { players: true } } },
           });
+
+          this.socket.notifyAllSubsribers(
+            CLIENT_MESSAGES.PLAYERS_UPDATED,
+            updatedPlayer.battlefield.players,
+          );
         } else {
           return 'необходимо атаковать стража';
         }
@@ -189,20 +210,20 @@ export class PlayerService {
 
       const newDefengingPlayeHp =
         defendingPlayer.health - attacker.currentDamageCount;
-      await this.db.player.update({
+      const updatedDefendingPlayer = await this.db.player.update({
         data: { health: Math.max(newDefengingPlayeHp, MIN_PLAYER_HP) },
         where: { id: dto.defendingPlayerId },
       });
 
-      await this.db.player.update({
+      const updatedAttackingPlayer = await this.db.player.update({
         data: { currentDamageCount: 0 },
         where: { id: dto.attackingPlayerId },
       });
-    }
 
-    await this.battlefield.getBattlefieldAndNotifyAllSubs(
-      CLIENT_MESSAGES.BATTLEFIELD_UPDATED,
-      attacker.battlefieldId,
-    );
+      this.socket.notifyAllSubsribers(CLIENT_MESSAGES.PLAYERS_UPDATED, [
+        updatedDefendingPlayer,
+        updatedAttackingPlayer,
+      ]);
+    }
   }
 }

@@ -12,12 +12,14 @@ import { ActionsWithUpdatePlacementService } from './services/actions/actions-wi
 import { GoldActionService } from './services/actions/gold/gold.service';
 import { PutToDeckResetedCardActionService } from './services/actions/put-to-deck-reseted-card/put-to-deck-reseted-card.service';
 import { ResetOpponentsCardActionService } from './services/actions/reset-opponents-card/reset-opponents-card.service';
+import { HeroHelperService } from './services/hero/helper/hero-herlper.service';
 
 @Module({
   imports: [SocketModule, forwardRef(() => BattlefieldModule)],
   controllers: [HeroController],
   providers: [
     HeroService,
+    HeroHelperService,
     ActionsService,
     TakeCardActionService,
     DamageActionService,
@@ -27,6 +29,6 @@ import { ResetOpponentsCardActionService } from './services/actions/reset-oppone
     PutToDeckResetedCardActionService,
     ResetOpponentsCardActionService,
   ],
-  exports: [HeroService],
+  exports: [HeroService, HeroHelperService],
 })
 export class HeroModule {}

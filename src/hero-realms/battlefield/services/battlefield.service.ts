@@ -6,13 +6,13 @@ import { HeroService } from 'src/hero-realms/hero/services/hero/hero.service';
 import { getRandomNumber, getRandomNumbers } from '../../utils/math';
 import { HERO_PLACEMENT } from 'src/hero-realms/hero/enums/hero-placement.enum';
 import {
-  BASE_HEROES,
   CLIENT_MESSAGES,
   INITIAL_CARDS_COUNT,
   MIN_BATTLEFIELD_PLAYERS_COUNT,
   TRADING_ROW_CARDS_COUNT,
 } from '../battlefield.constant';
 import { SocketService } from 'libs/socket/services/socket.service';
+import { HeroHelperService } from 'src/hero-realms/hero/services/hero/helper/hero-herlper.service';
 
 import type { CreateBattlefieldDto } from '../controllers/dtos/create-battlefield.dto';
 import type { UpdateBattlefieldDto } from '../controllers/dtos/update-battlefield.dto';
@@ -24,6 +24,7 @@ export class BattlefieldService {
     private readonly db: PrismaClient,
     @Inject(forwardRef(() => HeroService))
     private readonly hero: HeroService,
+    private readonly heroHelper: HeroHelperService,
     private readonly socket: SocketService,
   ) {}
 
@@ -238,10 +239,14 @@ export class BattlefieldService {
     const normalizedBattlefield = {
       ...battlefield,
       heroes:
-        battlefield.heroes?.map((hero) => this.hero.normalizeHero(hero)) ?? [],
+        battlefield.heroes?.map((hero) =>
+          this.heroHelper.normalizeHero(hero),
+        ) ?? [],
       players: battlefield.players?.map((player) => ({
         ...player,
-        heroes: player.heroes.map((hero) => this.hero.normalizeHero(hero)),
+        heroes: player.heroes.map((hero) =>
+          this.heroHelper.normalizeHero(hero),
+        ),
       })),
     };
 

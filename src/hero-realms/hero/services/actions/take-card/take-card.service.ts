@@ -3,12 +3,16 @@ import { HeroPlacement, PrismaClient } from '@prisma/client';
 
 import countForEveryValue from 'src/hero-realms/hero/utils/count-for-every-value';
 import { getRandomNumbers } from 'src/hero-realms/utils/math';
+import { HeroHelperService } from '../../hero/helper/hero-herlper.service';
 
 import { IAction, type UseActionDto } from '../action.interface';
 
 @Injectable()
 export class TakeCardActionService extends IAction {
-  constructor(private readonly db: PrismaClient) {
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly heroHelper: HeroHelperService,
+  ) {
     super();
   }
 
@@ -49,10 +53,13 @@ export class TakeCardActionService extends IAction {
         dto.player.guaranteedHeroes.includes(hero.id)
       ) {
         takedCardCount++;
-        await this.db.hero.updateMany({
+        const updatedHero = await this.db.hero.update({
           where: { id: hero.id },
           data: { placement: HeroPlacement.ACTIVE_DECK },
+          include: { actions: true },
         });
+
+        this.heroHelper.onUpdateHero(updatedHero);
 
         if (dto.player.guaranteedHeroes.includes(hero.id)) {
           dto.player.guaranteedHeroes = dto.player.guaranteedHeroes.filter(

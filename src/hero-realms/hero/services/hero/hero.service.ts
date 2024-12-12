@@ -1,10 +1,9 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ActionCondition, HeroPlacement, PrismaClient } from '@prisma/client';
 import omit from 'lodash.omit';
 
 import { CONVERT_ACTION_CONDITION } from '../../enums/action-condition.enum';
 import { ADDITIONAL_ACTION_INFO } from './hero.constant';
-import { BattlefieldService } from 'src/hero-realms/battlefield/services/battlefield.service';
 import {
   CONVERT_HERO_PLACEMENT,
   HERO_PLACEMENT,
@@ -17,12 +16,10 @@ import {
 } from '../../utils/get-info-for-used-action';
 import { ActionsService } from '../actions/action.service';
 import { MAX_PLAYER_HP } from 'src/hero-realms/player/services/player.constant';
+import { SocketService } from 'libs/socket/services/socket.service';
+import { HeroHelperService } from './helper/hero-herlper.service';
 
-import type {
-  ActionWithoutAdditionalInfo,
-  HeroRaw,
-  HeroStats,
-} from './hero.interface';
+import type { ActionWithoutAdditionalInfo, HeroStats } from './hero.interface';
 import type { HireHeroDto } from '../../controllers/dtos/hire-hero.dto';
 import type { UseHeroActionsDto } from '../../controllers/dtos/use-hero-actions.dto';
 
@@ -30,9 +27,9 @@ import type { UseHeroActionsDto } from '../../controllers/dtos/use-hero-actions.
 export class HeroService {
   constructor(
     private readonly db: PrismaClient,
-    @Inject(forwardRef(() => BattlefieldService))
-    private readonly battlefield: BattlefieldService,
     private readonly actions: ActionsService,
+    private readonly socket: SocketService,
+    private readonly heroHelper: HeroHelperService,
   ) {}
 
   public async getHeroes(byBattlefieldId: number = null) {
@@ -41,7 +38,9 @@ export class HeroService {
       where: { battlefieldId: byBattlefieldId },
     });
 
-    const normalizedHeroes = heroes.map((hero) => this.normalizeHero(hero));
+    const normalizedHeroes = heroes.map((hero) =>
+      this.heroHelper.normalizeHero(hero),
+    );
 
     return normalizedHeroes;
   }
@@ -94,17 +93,16 @@ export class HeroService {
 
     if (hero.placement === HeroPlacement.SUPPORTS_ROW) {
       const nomalized = {
-        ...this.normalizeHero(hero),
+        ...this.heroHelper.normalizeHero(hero),
         placement: HERO_PLACEMENT.RESET_DECK,
+        playerId: player.id,
+        battlefieldId: player.battlefieldId,
       };
 
-      const newH = await this.createHero(omit(nomalized, 'id'));
-      await this.db.hero.update({
-        where: { id: newH.id },
-        data: { playerId: player.id, battlefieldId: player.battlefieldId },
-      });
+      const newSupportHero = await this.createHero(omit(nomalized, 'id'));
+      this.heroHelper.onUpdateHero(newSupportHero);
     } else {
-      await this.db.hero.update({
+      const hiredHero = await this.db.hero.update({
         where: { id: dto.heroId },
         data: {
           playerId: dto.playerId,
@@ -112,7 +110,10 @@ export class HeroService {
             ? HeroPlacement.SELECTION_DECK
             : HeroPlacement.RESET_DECK,
         },
+        include: { actions: true },
       });
+
+      this.heroHelper.onUpdateHero(hiredHero);
 
       const tradingDeckHeroes = await this.db.hero.findMany({
         where: {
@@ -127,27 +128,30 @@ export class HeroService {
           tradingDeckHeroes.length - 1,
         );
 
-        await this.db.hero.update({
+        const newHeroOnTrading = await this.db.hero.update({
           where: { id: tradingDeckHeroes[newRandomHeroIndex].id },
           data: {
             placement: HeroPlacement.TRADING_ROW,
           },
+          include: { actions: true },
         });
+        this.heroHelper.onUpdateHero(newHeroOnTrading);
       }
     }
 
-    await this.db.player.update({
+    const updatedPlayer = await this.db.player.update({
       data: {
         currentGoldCount: player.currentGoldCount - hero.price,
       },
       where: {
         id: player.id,
       },
+      include: { battlefield: { include: { players: true } } },
     });
 
-    await this.battlefield.getBattlefieldAndNotifyAllSubs(
-      CLIENT_MESSAGES.BATTLEFIELD_UPDATED,
-      player.battlefieldId,
+    this.socket.notifyAllSubsribers(
+      CLIENT_MESSAGES.PLAYERS_UPDATED,
+      updatedPlayer.battlefield.players,
     );
   }
 
@@ -169,11 +173,14 @@ export class HeroService {
       return;
     }
 
-    if (hero.protection) {
-      await this.db.hero.update({
+    if (hero.protection && hero.placement !== HeroPlacement.DEFENDERS_ROW) {
+      const updatedHero = await this.db.hero.update({
         where: { id: hero.id },
         data: { placement: HeroPlacement.DEFENDERS_ROW },
+        include: { actions: true },
       });
+
+      this.heroHelper.onUpdateHero(updatedHero);
     }
 
     const { defendersCount, fractionHeroes, guardiansCount } = getHeroesInfo(
@@ -187,10 +194,13 @@ export class HeroService {
         action.conditions.includes(ActionCondition.SACRIFICE);
 
       if (isSacrificeSelf) {
-        await this.db.hero.updateMany({
+        const droppedHero = await this.db.hero.update({
           where: { id: dto.heroIdForAction },
           data: { placement: HeroPlacement.SACRIFICIAL_DECK },
+          include: { actions: true },
         });
+
+        this.heroHelper.onUpdateHero(droppedHero);
       }
 
       const isActionCanBeUsed = getIsActionCanBeUsed(
@@ -229,7 +239,7 @@ export class HeroService {
       }
     }
 
-    await this.db.player.update({
+    const updatedPlayer = await this.db.player.update({
       where: { id: player.id },
       data: {
         currentDamageCount: player.currentDamageCount,
@@ -237,36 +247,12 @@ export class HeroService {
         health: Math.min(player.health, MAX_PLAYER_HP),
         guaranteedHeroes: player.guaranteedHeroes,
       },
+      include: { battlefield: { include: { players: true } } },
     });
 
-    await this.battlefield.getBattlefieldAndNotifyAllSubs(
-      CLIENT_MESSAGES.BATTLEFIELD_UPDATED,
-      player.battlefieldId,
+    this.socket.notifyAllSubsribers(
+      CLIENT_MESSAGES.PLAYERS_UPDATED,
+      updatedPlayer.battlefield.players,
     );
-  }
-
-  public normalizeHero(hero: HeroRaw) {
-    return {
-      ...hero,
-      placement: CONVERT_HERO_PLACEMENT.FROM_BD[hero.placement],
-      actions: hero.actions.map((action) => ({
-        ...action,
-        conditions: action.conditions.map(
-          (condition) => CONVERT_ACTION_CONDITION.FROM_DB[condition],
-        ),
-        damage: action.damage || undefined,
-        gold: action.gold || undefined,
-        prepareHero: action.prepareHero || undefined,
-        putPurchasedCardIntoDeck: action.putPurchasedCardIntoDeck || undefined,
-        putToDeckResetedDefender: action.putToDeckResetedDefender || undefined,
-        putToDeckResetedCard: action.putToDeckResetedCard || undefined,
-        heal: action.heal || undefined,
-        sacrificeCard: action.sacrificeCard || undefined,
-        resetCard: action.resetCard || undefined,
-        resetOpponentsCard: action.resetOpponentsCard || undefined,
-        stanOpponentsHero: action.stanOpponentsHero || undefined,
-        takeCard: action.takeCard || undefined,
-      })),
-    };
   }
 }

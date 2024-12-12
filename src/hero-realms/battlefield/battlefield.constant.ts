@@ -12,6 +12,9 @@ export const CLIENT_MESSAGES = {
   BATTLEFIELD_UPDATED: 'client:battlefiled-updated',
   NEED_TO_RESET_CARD: 'client:need-to-reset-card',
   RESET_CARD: 'client:reset-card',
+
+  PLAYERS_UPDATED: 'client:players-updated',
+  HERO_UPDATED: 'client:hero-updated',
 };
 
 export const TRANSPORTS = ['websocket'];
