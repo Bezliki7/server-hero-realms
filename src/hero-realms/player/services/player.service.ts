@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HeroPlacement, Player, PrismaClient } from '@prisma/client';
 
-import { BattlefieldService } from 'src/hero-realms/battlefield/services/battlefield.service';
 import { CLIENT_MESSAGES } from 'src/hero-realms/battlefield/battlefield.constant';
 import { DEFAULT_PLAYER_HP, MIN_PLAYER_HP } from './player.constant';
 import { PlayerHelperService } from './helper/player-helper.service';
@@ -16,7 +15,6 @@ import type { AttackPlayerDto } from '../controllers/dtos/attack-player.dto';
 export class PlayerService {
   constructor(
     private readonly db: PrismaClient,
-    private readonly battlefield: BattlefieldService,
     private readonly heroHelper: HeroHelperService,
     private readonly playerHelper: PlayerHelperService,
     private readonly socket: SocketService,
@@ -124,11 +122,6 @@ export class PlayerService {
 
       this.socket.notifyAllSubsribers(CLIENT_MESSAGES.PLAYERS_UPDATED, players);
 
-      await this.battlefield.getBattlefieldAndNotifyAllSubs(
-        CLIENT_MESSAGES.BATTLEFIELD_UPDATED,
-        updatedPlayer.battlefieldId,
-      );
-
       return updatedPlayer;
     } catch (error) {
       console.log(error);
@@ -210,6 +203,7 @@ export class PlayerService {
 
       const newDefengingPlayeHp =
         defendingPlayer.health - attacker.currentDamageCount;
+
       const updatedDefendingPlayer = await this.db.player.update({
         data: { health: Math.max(newDefengingPlayeHp, MIN_PLAYER_HP) },
         where: { id: dto.defendingPlayerId },

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { HeroPlacement, PrismaClient } from '@prisma/client';
 
+import { HeroHelperService } from 'src/hero-realms/hero/services/hero/helper/hero-herlper.service';
 import { getRandomNumbers } from 'src/hero-realms/utils/math';
 import { PLAYER_ACTIVE_DECK_COUNT } from '../player.constant';
 
@@ -8,17 +9,23 @@ import type { PlayerWithHeroesRaw } from '../player.interface';
 
 @Injectable()
 export class PlayerHelperService {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly heroHelper: HeroHelperService,
+  ) {}
 
   public async updateActiveDeck(player: PlayerWithHeroesRaw) {
     try {
       console.log('updateActiveDeck');
       for (const hero of player.heroes) {
         if (hero.placement === HeroPlacement.ACTIVE_DECK) {
-          await this.db.hero.update({
+          const resetedHero = await this.db.hero.update({
             where: { id: hero.id },
             data: { placement: HeroPlacement.RESET_DECK },
+            include: { actions: true },
           });
+
+          this.heroHelper.onUpdateHero(resetedHero);
         }
 
         await this.db.action.updateMany({
@@ -34,7 +41,7 @@ export class PlayerHelperService {
       for (const heroId of player.guaranteedHeroes) {
         if (currentActiveDeckCount < PLAYER_ACTIVE_DECK_COUNT) {
           currentActiveDeckCount++;
-          await this.db.hero.update({
+          const newActiveHero = await this.db.hero.update({
             where: { id: heroId },
             data: {
               actions: {
@@ -45,7 +52,10 @@ export class PlayerHelperService {
               },
               placement: HeroPlacement.ACTIVE_DECK,
             },
+            include: { actions: true },
           });
+
+          this.heroHelper.onUpdateHero(newActiveHero);
         } else {
           break;
         }
@@ -68,7 +78,7 @@ export class PlayerHelperService {
 
       for (const [index, hero] of selectionPlayerDeck.entries()) {
         if (newRandomActiveDeck.includes(index)) {
-          await this.db.hero.update({
+          const newActiveHero = await this.db.hero.update({
             where: { id: hero.id },
             data: {
               actions: {
@@ -79,14 +89,17 @@ export class PlayerHelperService {
               },
               placement: HeroPlacement.ACTIVE_DECK,
             },
+            include: { actions: true },
           });
+
+          this.heroHelper.onUpdateHero(newActiveHero);
         }
       }
 
-      const selectionDeckCountWithGuarantHeroes =
+      const totalSelectionDeckCount =
         selectionPlayerDeck.length + player.guaranteedHeroes.length;
 
-      if (selectionDeckCountWithGuarantHeroes < PLAYER_ACTIVE_DECK_COUNT) {
+      if (totalSelectionDeckCount < PLAYER_ACTIVE_DECK_COUNT) {
         const resetPlayerDeck = player.heroes.filter(
           (hero) =>
             hero.placement === HeroPlacement.RESET_DECK ||
@@ -100,14 +113,17 @@ export class PlayerHelperService {
         );
 
         for (const [index, hero] of resetPlayerDeck.entries()) {
-          await this.db.hero.update({
+          const newActiveHero = await this.db.hero.update({
             where: { id: hero.id },
             data: {
               placement: newRandomActiveDeckIndexes.includes(index)
                 ? HeroPlacement.ACTIVE_DECK
                 : HeroPlacement.SELECTION_DECK,
             },
+            include: { actions: true },
           });
+
+          this.heroHelper.onUpdateHero(newActiveHero);
         }
       }
       console.log('end');

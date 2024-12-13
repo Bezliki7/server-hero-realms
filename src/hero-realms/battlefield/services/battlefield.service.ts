@@ -220,21 +220,6 @@ export class BattlefieldService {
     );
   }
 
-  public async getBattlefieldAndNotifyAllSubs(event: string, id: number) {
-    const battlefield = await this.db.battlefield.findUnique({
-      where: { id },
-      include: {
-        players: { include: { heroes: { include: { actions: true } } } },
-        heroes: { include: { actions: true } },
-      },
-    });
-
-    this.socket.notifyAllSubsribers(
-      event,
-      this.normalizedBattlefield(battlefield),
-    );
-  }
-
   private normalizedBattlefield(battlefield: RawBattlefield) {
     const normalizedBattlefield = {
       ...battlefield,
