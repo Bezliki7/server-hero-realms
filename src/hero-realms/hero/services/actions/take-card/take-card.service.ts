@@ -37,12 +37,7 @@ export class TakeCardActionService extends IAction {
       playerSelectionDeck.length - 1,
       takeCardValue - dto.player.guaranteedHeroes.length,
     );
-    console.log({ randomCards });
-    console.log(
-      'guaranteed',
-      dto.player.guaranteedHeroes,
-      playerSelectionDeck.map((h) => h.name),
-    );
+
     for (const [index, hero] of playerSelectionDeck.entries()) {
       if (takedCardCount >= takeCardValue) {
         break;

@@ -36,6 +36,10 @@ export class ActionsService {
 
     await this[actionServiceName].useAction(dto);
 
+    if (dto.action.isOptional && !dto.heroIdForAction) {
+      return;
+    }
+
     const usedAction = await this.db.action.update({
       where: { id: dto.action.id },
       data: { isUsed: true },

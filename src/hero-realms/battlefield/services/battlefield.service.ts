@@ -32,7 +32,9 @@ export class BattlefieldService {
     const battlefield = await this.db.battlefield.create({
       data: {
         name: dto.name,
+        players: { connect: { id: dto.playerId } },
       },
+      include: { players: true },
     });
 
     return battlefield;
