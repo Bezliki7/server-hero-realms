@@ -56,52 +56,29 @@ export class BattlefieldService {
 
   public async getBattleFileds() {
     const battlefields = await this.db.battlefield.findMany({
-      include: { heroes: true, players: true },
+      include: {
+        heroes: { include: { actions: true } },
+        players: true,
+      },
     });
 
-    return battlefields;
+    return battlefields.map((battlefield) =>
+      this.normalizedBattlefield(battlefield),
+    );
   }
 
   public async updateBattleFiled(dto: UpdateBattlefieldDto) {
-    const players = await this.db.player.findMany({
-      where: {
-        id: {
-          in: dto.playersIds,
-        },
-      },
-    });
-
-    const heroes = await this.db.hero.findMany({
-      where: {
-        id: {
-          in: dto.heroIds,
-        },
-      },
-    });
-
-    for (const player of players) {
-      await this.db.battlefield.update({
-        where: { id: dto.id },
-        data: {
-          players: {
-            connect: {
-              id: player.id,
-            },
-          },
-        },
-      });
-    }
-
-    const updatedPlayer = await this.db.battlefield.update({
+    const updatedBatlefield = await this.db.battlefield.update({
       where: { id: dto.id },
       data: {
         name: dto.name,
         round: dto.round,
+        players: { connect: dto.playersIds.map((id) => ({ id })) },
       },
       include: { players: true },
     });
 
-    return updatedPlayer;
+    return updatedBatlefield;
   }
 
   public async clearBattlefield(id: number) {
@@ -231,7 +208,7 @@ export class BattlefieldService {
         ) ?? [],
       players: battlefield.players?.map((player) => ({
         ...player,
-        heroes: player.heroes.map((hero) =>
+        heroes: player.heroes?.map((hero) =>
           this.heroHelper.normalizeHero(hero),
         ),
       })),

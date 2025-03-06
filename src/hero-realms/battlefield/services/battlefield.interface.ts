@@ -9,6 +9,6 @@ export type PrepareBattlefieldDto = {
 export type RawBattlefield = Battlefield & {
   heroes: HeroRaw[];
   players: (Player & {
-    heroes: HeroRaw[];
+    heroes?: HeroRaw[];
   })[];
 };
