@@ -47,7 +47,14 @@ export class BattlefieldService {
       },
       include: {
         heroes: { include: { actions: true } },
-        players: { include: { heroes: { include: { actions: true } } } },
+        players: {
+          include: {
+            heroes: {
+              where: { battlefieldId: id },
+              include: { actions: true },
+            },
+          },
+        },
       },
     });
 
@@ -100,13 +107,13 @@ export class BattlefieldService {
 
   public async prepareBattlefield(id: number) {
     let battlefield = await this.getBattleFiled(id);
-    console.log(battlefield);
-    if (battlefield.players.length < MIN_BATTLEFIELD_PLAYERS_COUNT) {
+
+    if (battlefield.players.length !== MIN_BATTLEFIELD_PLAYERS_COUNT) {
       return;
     }
 
     const heroes = await this.hero.getHeroes();
-    console.log(heroes);
+
     if (!battlefield.heroes.length) {
       const heroesForTrade = heroes.filter(
         (hero) => hero.price && hero.fraction,
@@ -120,13 +127,15 @@ export class BattlefieldService {
 
       for (const [index, hero] of heroesForTrade.entries()) {
         const omittedHero = omit(hero, 'id');
-        await this.hero.createHero({
+        const newHero = await this.hero.createHero({
           ...omittedHero,
           battlefieldId: id,
           placement: indexCardsForTraidingRow.includes(index)
             ? HERO_PLACEMENT.TRADING_ROW
             : HERO_PLACEMENT.TRADING_DECK,
         });
+
+        battlefield.heroes.push(this.heroHelper.normalizeHero(newHero));
       }
 
       const supportHeroes = heroes.filter(
@@ -134,19 +143,21 @@ export class BattlefieldService {
       );
       for (const hero of supportHeroes.values()) {
         const omittedHero = omit(hero, 'id');
-        await this.hero.createHero({
+        const newHero = await this.hero.createHero({
           ...omittedHero,
           battlefieldId: id,
           placement: HERO_PLACEMENT.SUPPORTS_ROW,
         });
+
+        battlefield.heroes.push(this.heroHelper.normalizeHero(newHero));
       }
     }
 
-    const filteredPlayers = battlefield.players.filter(
+    const playersWithoutHeroes = battlefield.players.filter(
       (player) => !player.heroes.length,
     );
 
-    if (filteredPlayers.length) {
+    if (playersWithoutHeroes.length) {
       const randomPlayerIndex = getRandomNumber(0, 1);
       const playerToChangeTurnOrder = battlefield.players[randomPlayerIndex];
 
@@ -154,6 +165,7 @@ export class BattlefieldService {
         data: { currentTurnPlayer: true },
         where: { id: playerToChangeTurnOrder.id },
       });
+      playerToChangeTurnOrder.currentTurnPlayer = true;
 
       const baseHeroes = heroes.filter((hero) => !hero.price);
 
@@ -161,7 +173,7 @@ export class BattlefieldService {
       const duplicates = new Array(4).fill(cardForDuplicate);
       baseHeroes.push(...duplicates);
 
-      for (const player of filteredPlayers) {
+      for (const player of playersWithoutHeroes) {
         const initialCountCards =
           playerToChangeTurnOrder.id === player.id
             ? INITIAL_CARDS_COUNT.FIRST_PLAYER
@@ -177,7 +189,7 @@ export class BattlefieldService {
           const omittedHero = omit(hero, 'id');
           const isActiveHero = indexCardsForActiveDeck.includes(index);
 
-          await this.hero.createHero({
+          const newHero = await this.hero.createHero({
             ...omittedHero,
             battlefieldId: id,
             playerId: player.id,
@@ -185,12 +197,23 @@ export class BattlefieldService {
               ? HERO_PLACEMENT.ACTIVE_DECK
               : HERO_PLACEMENT.SELECTION_DECK,
           });
+          player.heroes.push(this.heroHelper.normalizeHero(newHero));
         }
       }
     }
 
-    if (!battlefield.heroes.length) {
-      battlefield = await this.getBattleFiled(id);
+    const somePlayerCurrentTurn = battlefield.players.filter(
+      (p) => p.currentTurnPlayer,
+    );
+
+    if (!somePlayerCurrentTurn.length) {
+      const lastUpdatedPlayer = battlefield.players.at(-1);
+      await this.db.player.update({
+        data: { currentTurnPlayer: true },
+        where: { id: lastUpdatedPlayer.id },
+      });
+
+      lastUpdatedPlayer.currentTurnPlayer = true;
     }
 
     this.socket.notifyAllSubsribers(
