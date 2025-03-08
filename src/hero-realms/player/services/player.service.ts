@@ -135,7 +135,7 @@ export class PlayerService {
 
     const defendingPlayer = await this.db.player.findUnique({
       where: { id: dto.defendingPlayerId },
-      include: { heroes: true },
+      include: { heroes: { where: { battlefieldId: attacker.battlefieldId } } },
     });
 
     if (!attacker || !defendingPlayer) {
