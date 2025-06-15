@@ -88,7 +88,7 @@ export class PlayerService {
         where: { id },
         include: {
           battlefield: { include: { players: true } },
-          heroes: true,
+          heroes: { include: { actions: true } },
         },
       });
 

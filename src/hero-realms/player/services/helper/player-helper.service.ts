@@ -16,8 +16,11 @@ export class PlayerHelperService {
 
   public async updateActiveDeck(player: PlayerWithHeroesRaw) {
     try {
-      console.log('updateActiveDeck');
       for (const hero of player.heroes) {
+        if (hero.battlefieldId !== player.battlefieldId) {
+          continue;
+        }
+
         if (hero.placement === HeroPlacement.ACTIVE_DECK) {
           const resetedHero = await this.db.hero.update({
             where: { id: hero.id },
@@ -28,15 +31,21 @@ export class PlayerHelperService {
           this.heroHelper.onUpdateHero(resetedHero);
         }
 
-        await this.db.action.updateMany({
+        const info = await this.db.action.updateMany({
           where: { heroId: hero.id, isUsed: true },
           data: { isUsed: false },
         });
+
+        if (info.count && hero.placement === HeroPlacement.DEFENDERS_ROW) {
+          const unusedActions = hero.actions.map((action) => ({
+            ...action,
+            isUsed: false,
+          }));
+          this.heroHelper.onUpdateHero({ ...hero, actions: unusedActions });
+        }
       }
 
       let currentActiveDeckCount = 0;
-
-      console.log(player.guaranteedHeroes);
 
       for (const heroId of player.guaranteedHeroes) {
         if (currentActiveDeckCount < PLAYER_ACTIVE_DECK_COUNT) {
@@ -64,7 +73,8 @@ export class PlayerHelperService {
       const selectionPlayerDeck = player.heroes.filter(
         (hero) =>
           hero.placement === HeroPlacement.SELECTION_DECK &&
-          !player.guaranteedHeroes.includes(hero.id),
+          !player.guaranteedHeroes.includes(hero.id) &&
+          hero.battlefieldId === player.battlefieldId,
       );
 
       const randomNumbersLength =
@@ -103,7 +113,8 @@ export class PlayerHelperService {
         const resetPlayerDeck = player.heroes.filter(
           (hero) =>
             hero.placement === HeroPlacement.RESET_DECK ||
-            hero.placement === HeroPlacement.ACTIVE_DECK,
+            (hero.placement === HeroPlacement.ACTIVE_DECK &&
+              hero.battlefieldId === player.battlefieldId),
         );
 
         const newRandomActiveDeckIndexes = getRandomNumbers(
