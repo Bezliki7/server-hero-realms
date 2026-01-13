@@ -28,6 +28,7 @@ export class PlayerService {
         image: '',
         health: DEFAULT_PLAYER_HP,
         turnOrder: 1,
+        userId: dto.userId,
         currentTurnPlayer: false,
       },
       include: { heroes: { include: { actions: true } } },

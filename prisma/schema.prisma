@@ -74,7 +74,10 @@ model Action {
 }
 
 model Player {
-  id                 Int          @id @default(autoincrement())
+  id     Int  @id @default(autoincrement())
+  userId Int  @unique() @map("user_id")
+  user   User @relation(fields: [userId], references: [id])
+
   battlefieldId      Int?         @map("battlefield_id")
   battlefield        Battlefield? @relation(fields: [battlefieldId], references: [id])
   name               String       @unique() @db.VarChar(255)
@@ -100,4 +103,13 @@ model Battlefield {
   heroes  Hero[]
 
   @@map("battlefield")
+}
+
+model User {
+  id       Int     @id @default(autoincrement())
+  email    String  @unique()
+  password String
+  player   Player?
+
+  @@map("user")
 }
