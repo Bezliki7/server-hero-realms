@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// TODO: разбить по файлам
+
 enum ActionCondition {
   SACRIFICE          @map("sacrifice")
   FRACTION           @map("fraction")
@@ -76,7 +78,7 @@ model Action {
 model Player {
   id     Int  @id @default(autoincrement())
   userId Int  @unique() @map("user_id")
-  user   User @relation(fields: [userId], references: [id])
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   battlefieldId      Int?         @map("battlefield_id")
   battlefield        Battlefield? @relation(fields: [battlefieldId], references: [id])
@@ -106,10 +108,20 @@ model Battlefield {
 }
 
 model User {
-  id       Int     @id @default(autoincrement())
-  email    String  @unique()
-  password String
-  player   Player?
+  id        Int        @id @default(autoincrement())
+  email     String     @unique()
+  password  String
+  player    Player?
+  userToken UserToken?
 
   @@map("user")
+}
+
+// TODO: возможно стоит вынести в redis
+model UserToken {
+  userId       Int    @unique() @db.Integer()
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String
+
+  @@map("user_token")
 }
